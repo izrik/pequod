@@ -15,6 +15,8 @@ def run():
     PEQUOD_LOGIN_USERNAME = os.getenv('PEQUOD_LOGIN_USERNAME')
     PEQUOD_LOGIN_PASSWORD = os.getenv('PEQUOD_LOGIN_PASSWORD')
 
+    PEQUOD_POST_COMMAND = os.getenv('PEQUOD_POST_COMMAND')
+
     parser = argparse.ArgumentParser()
 
     subs = parser.add_subparsers(dest='command', title='Available commands')
@@ -51,12 +53,14 @@ def run():
     login_s.set_defaults(func=lambda _args: cmd_login(_args.openshift_url,
                                                       _args.registry_url,
                                                       _args.username,
-                                                      _args.password))
+                                                      _args.password),
+                         on_post='login complete')
 
     build_s = subs.add_parser('build',
                               help='Build one or more component images.')
     build_s.add_argument('components', choices=component_choices, nargs='*')
-    build_s.set_defaults(func=lambda _args: cmd_build(_args.components))
+    build_s.set_defaults(func=lambda _args: cmd_build(_args.components),
+                         on_post='build complete')
 
     push_s = subs.add_parser(
         'push', help='Push one or more component images to the registry.')
@@ -76,7 +80,8 @@ def run():
             format_envvar(PEQUOD_PROJECT_NAME)))
     push_s.set_defaults(
         func=lambda _args: cmd_push(_args.components, _args.registry_url,
-                                    _args.project_name))
+                                    _args.project_name),
+        on_post='push complete')
 
     bp_s = subs.add_parser(
         'bp', help='Both build and push selected component images')
@@ -95,20 +100,26 @@ def run():
              '"localhost" (currently {}).'.format(
             format_envvar(PEQUOD_PROJECT_NAME)))
     bp_s.set_defaults(func=lambda _args: cmd_build_and_push(
-        _args.components, _args.registry_url, _args.project_name))
+        _args.components, _args.registry_url, _args.project_name),
+                      on_post='build and push complete')
 
     flake_s = subs.add_parser('flake', help='Run flake8 on the source files.')
     # TODO: specify components
-    flake_s.set_defaults(func=lambda _args: cmd_flake())
+    flake_s.set_defaults(func=lambda _args: cmd_flake(),
+                         on_post='flake 8 complete')
 
     test_s = subs.add_parser('test', help='Run the unit tests.')
     # TODO: specify components
-    test_s.set_defaults(func=lambda _args: cmd_test())
+    test_s.set_defaults(func=lambda _args: cmd_test(),
+                        on_post='unit tests complete')
 
     args = parser.parse_args()
 
     if 'func' in args:
         args.func(args)
+        if PEQUOD_POST_COMMAND and 'on_post' in args and args.on_post:
+            cmd = PEQUOD_POST_COMMAND.split() + args.on_post.split()
+            run_external_command(cmd, print, print)
     else:
         parser.print_help()
 
