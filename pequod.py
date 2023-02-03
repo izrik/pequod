@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 import os
 import sys
-import time
 
 import argparse
-import datetime
 import asyncio
 
 
@@ -20,9 +18,6 @@ def run():
     #     'build', 'push', 'bp', 'test', 'flake', 'flake8', 'ci'))
 
     subs = parser.add_subparsers(dest='command', title='Available commands')
-
-    diag_s = subs.add_parser('diag')
-    diag_s.set_defaults(func=lambda _args: cmd_diag())
 
     def format_envvar(s):
         if s is None:
@@ -250,37 +245,6 @@ def cmd_test():
          '--cov=pequod', '--cov-branch', '--cov-report', 'html', 'tests/'],
         stdout_cb=stdout,
         stderr_cb=stderr)
-
-
-def cmd_diag():
-    def get_timestamp():
-        dts = datetime.datetime.utcnow()
-        epochtime = time.mktime(dts.timetuple()) + dts.microsecond / 1e6
-        return epochtime
-
-    def _print(s):
-        print('{} -- {}'.format(s, get_timestamp()))
-
-    async def aaa():
-        _print('aaa1')
-        await asyncio.sleep(1)
-        _print('aaa2')
-        await bbb()
-        _print('aaa3')
-
-    async def bbb():
-        _print('bbb1')
-        await asyncio.sleep(1)
-        _print('bbb2')
-        await ccc()
-        _print('bbb3')
-
-    async def ccc():
-        _print('ccc1')
-        await asyncio.sleep(1)
-        _print('ccc2')
-
-    loop.run_until_complete(aaa())
 
 
 component_choices = (
