@@ -259,16 +259,26 @@ def cmd_test(**kwargs):
 
 
 class Component:
-    def __init__(self, name, image_name, dockerfile, context_folder,
-                 aliases=None):
+    def __init__(self, name, image_name, dockerfile, comp_type=None,
+                 context_folder=None, aliases=None, depends_on=None):
         self.name = name
         self.image_name = image_name
         self.dockerfile = dockerfile
+        self.comp_type = comp_type
+        if context_folder is None:
+            context_folder = '.'
         self.context_folder = context_folder
         if aliases is None:
             aliases = []
         self.aliases = list(aliases)
         self.is_supported = True
+        if depends_on is None:
+            depends_on = []
+        if not isinstance(depends_on, (list, tuple)):
+            depends_on = [depends_on]
+        if isinstance(depends_on, tuple):
+            depends_on = list(depends_on)
+        self.depends_on = depends_on
 
     def __repr__(self):
         return 'Component(\'{}\')'.format(self.name)
