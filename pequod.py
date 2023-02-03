@@ -4,13 +4,29 @@
 Build container images of the various components and push them to a registry.
 """
 
+from datetime import datetime
 from itertools import chain
+import subprocess
 
 import os
 import sys
 
 import argparse
 import asyncio
+
+
+def get_image_tag_from_git_commit():
+    describe_args = ['git', 'describe', '--exclude=*', '--always',
+                     '--abbrev=40', '--dirty']
+    p = subprocess.run(describe_args, stdout=subprocess.PIPE)
+    tag = p.stdout.decode('utf-8').strip()
+    if tag.endswith('-dirty'):
+        timestamp = datetime.utcnow().strftime('%Y%m%d-%H%M%S')
+        tag = f'{tag}-{timestamp}'
+    return tag
+
+
+DEFAULT_IMAGE_TAG = get_image_tag_from_git_commit()
 
 
 def run():
@@ -69,7 +85,14 @@ def run():
     build_s = subs.add_parser('build',
                               help='Build one or more component images.')
     build_s.add_argument('components', choices=component_choices, nargs='*')
-    build_s.set_defaults(func=lambda _args: cmd_build(_args.components),
+    build_s.add_argument(
+        '--version-tag',
+        default=DEFAULT_IMAGE_TAG,
+        help=f'A value to set as the VERSION_TAG build argument when running'
+             f' `docker build` Changing this is not recommended. Defaults to'
+             f' a string based on the current time and git commit description'
+             f' ("{DEFAULT_IMAGE_TAG}").')
+    build_s.set_defaults(func=cmd_build,
                          on_post='build complete')
 
     push_s = subs.add_parser(
@@ -90,12 +113,12 @@ def run():
             format_envvar(PEQUOD_PROJECT_NAME)))
     push_s.add_argument(
         '--image-tag',
-        default='latest',
+        default=DEFAULT_IMAGE_TAG,
         help='The tag for the docker image, e.g. "1.0" or "2.3.4-rev5-alpha" '
-             'or "stable". Defaults to "latest".')
+             'or "stable" or "latest". Defaults to a string based on the '
+             'current time and git commit description.')
     push_s.set_defaults(
-        func=lambda _args: cmd_push(_args.components, _args.registry_url,
-                                    _args.project_name, _args.image_tag),
+        func=cmd_push,
         on_post='push complete')
 
     bp_s = subs.add_parser(
@@ -116,12 +139,11 @@ def run():
             format_envvar(PEQUOD_PROJECT_NAME)))
     bp_s.add_argument(
         '--image-tag',
-        default='latest',
+        default=DEFAULT_IMAGE_TAG,
         help='The tag for the docker image, e.g. "1.0" or "2.3.4-rev5-alpha" '
-             'or "stable". Defaults to "latest".')
-    bp_s.set_defaults(func=lambda _args: cmd_build_and_push(
-        _args.components, _args.registry_url, _args.project_name,
-        _args.image_tag),
+             'or "stable" or "latest". Defaults to a string based on the '
+             'current time and git commit description.')
+    bp_s.set_defaults(func=cmd_build_and_push,
                       on_post='build and push complete')
 
     flake_s = subs.add_parser('flake', help='Run flake8 on the source files.')
@@ -361,7 +383,7 @@ def compose_image_operation_command(comp, registry_url=None, project_name=None,
     stdout = mkprint(label=comp.image_name)
     stderr = mkprint(label=comp.image_name, file=sys.stderr)
     if image_tag is None:
-        image_tag = 'latest'
+        image_tag = DEFAULT_IMAGE_TAG
     full_image_name = '{}/{}/{}:{}'.format(registry_url, project_name,
                                            comp.image_name, image_tag)
     if build and push:
