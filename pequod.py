@@ -153,8 +153,39 @@ def cmd_push(components, registry_url, project_name):
     run_multiple_futures(futures)
 
 
-def cmd_build_and_push(components):
-    pass
+def cmd_build_and_push(components, registry_url, project_name):
+    components = normalize_components(components)
+
+    futures = []
+
+    def build_and_push_image(image_name, dockerfile, folder=None):
+
+        stdout = mkprint(label=image_name)
+        stderr = mkprint(label=image_name, file=sys.stderr)
+
+        full_image_name = '{}/{}/{}:latest'.format(registry_url, project_name,
+                                                   image_name)
+
+        async def build_and_tag_and_push():
+            await stream_subprocess(
+                ['docker', 'build', '-t', image_name, '-f', dockerfile,
+                 folder],
+                stdout, stderr)
+            await stream_subprocess(
+                ['docker', 'tag', image_name, full_image_name], stdout, stderr)
+            await stream_subprocess(['docker', 'push', full_image_name],
+                                    stdout, stderr)
+
+        futures.append(build_and_tag_and_push())
+
+    if 'example1' in components:
+        build_and_push_image('example1', 'example1/Dockerfile',
+                             'example1')
+    if 'example2' in components:
+        build_and_push_image('example2', 'example2/Dockerfile',
+                             'example2')
+
+    run_multiple_futures(futures)
 
 
 def cmd_login(openshift_url, registry_url, username, password):
@@ -309,6 +340,25 @@ def run():
     push_s.set_defaults(
         func=lambda _args: cmd_push(_args.components, _args.registry_url,
                                     _args.project_name))
+
+    bp_s = subs.add_parser(
+        'bp', help='Both build and push selected component images')
+    bp_s.add_argument('components', choices=component_choices, nargs='*')
+    bp_s.add_argument(
+        '--registry-url',
+        default=PEQUOD_REGISTRY_URL,
+        help='The base url for the registry to push to. Usually a FQDN. '
+             'Defaults to the value of the PEQUOD_REGISTRY_URL env var '
+             '(currently {}).'.format(format_envvar(PEQUOD_REGISTRY_URL)))
+    bp_s.add_argument(
+        '--project-name',
+        default=PEQUOD_PROJECT_NAME,
+        help='The name of the project/repo to push to. defaults to the value '
+             'of the PEQUOD_PROJECT_NAME env var if provided, or else '
+             '"localhost" (currently {}).'.format(
+                format_envvar(PEQUOD_PROJECT_NAME)))
+    bp_s.set_defaults(func=lambda _args: cmd_build_and_push(
+        _args.components, _args.registry_url, _args.project_name))
 
     flake_s = subs.add_parser('flake', help='Run flake8 on the source files.')
     flake_s.set_defaults(func=lambda _args: cmd_flake())
