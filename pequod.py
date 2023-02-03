@@ -5,6 +5,7 @@ Build container images of the various components and push them to a registry.
 """
 
 from datetime import datetime
+from io import BytesIO, StringIO
 from itertools import chain
 import subprocess
 
@@ -343,16 +344,31 @@ async def read_stream(stream, cb):
             break
 
 
-async def stream_subprocess(cmd, stdout_cb, stderr_cb):
+async def write_stream(stream, cb):
+    if cb is None:
+        return
+    while True:
+        line = cb()
+        if line:
+            await stream.writeline()
+        else:
+            break
+
+
+async def stream_subprocess(cmd, stdout_cb, stderr_cb, stdin_cb=None):
     process = await asyncio.create_subprocess_exec(
         *cmd,
+        stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE)
 
-    await asyncio.wait([
+    awaitables = [
         read_stream(process.stdout, stdout_cb),
-        read_stream(process.stderr, stderr_cb)
-    ])
+        read_stream(process.stderr, stderr_cb),
+    ]
+    if stdin_cb:
+        awaitables.append(write_stream(process.stdin, stdin_cb))
+    await asyncio.wait(awaitables)
     return await process.wait()
 
 
@@ -363,12 +379,18 @@ async def wait_multiple(targets):
 loop = asyncio.get_event_loop()
 
 
-def run_external_command(command_args, stdout_cb=None, stderr_cb=None):
+def run_external_command(command_args, stdout_cb=None, stderr_cb=None,
+                         stdin=None):
     # https://kevinmccarthy.org/2016/07/25/streaming-subprocess-stdin-and-
     # stdout-with-asyncio-in-python/
 
+    if isinstance(stdin, bytes):
+        stdin = BytesIO(stdin).readline
+    if isinstance(stdin, str):
+        stdin = StringIO(stdin).readline
+
     rc = loop.run_until_complete(
-        stream_subprocess(command_args, stdout_cb, stderr_cb)
+        stream_subprocess(command_args, stdout_cb, stderr_cb, stdin_cb=stdin)
     )
     return rc
 
