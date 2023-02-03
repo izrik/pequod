@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from itertools import chain
+
 import os
 import sys
 
@@ -71,7 +73,7 @@ def run():
         help='The name of the project/repo to push to. defaults to the value '
              'of the PEQUOD_PROJECT_NAME env var if provided, or else '
              '"localhost" (currently {}).'.format(
-                format_envvar(PEQUOD_PROJECT_NAME)))
+            format_envvar(PEQUOD_PROJECT_NAME)))
     push_s.set_defaults(
         func=lambda _args: cmd_push(_args.components, _args.registry_url,
                                     _args.project_name))
@@ -91,7 +93,7 @@ def run():
         help='The name of the project/repo to push to. defaults to the value '
              'of the PEQUOD_PROJECT_NAME env var if provided, or else '
              '"localhost" (currently {}).'.format(
-                format_envvar(PEQUOD_PROJECT_NAME)))
+            format_envvar(PEQUOD_PROJECT_NAME)))
     bp_s.set_defaults(func=lambda _args: cmd_build_and_push(
         _args.components, _args.registry_url, _args.project_name))
 
@@ -113,88 +115,36 @@ def run():
 
 def cmd_build(components):
     components = normalize_components(components)
-
-    command_sets = []
-
-    def build_image(image_name, dockerfile, folder=None):
-        if folder is None:
-            folder = '.'
-        command_sets.append([
-            ['docker', 'build', '-t', image_name, '-f', dockerfile, folder],
-            mkprint(label=image_name),
-            mkprint(label=image_name, file=sys.stderr)])
-
-    if 'example1' in components:
-        build_image('example1', 'example1/Dockerfile',
-                    'example1')
-    if 'example2' in components:
-        build_image('example2', 'example2/Dockerfile',
-                    'example2')
-
-    run_multiple_command_sets(command_sets)
+    futures = []
+    for comp in components:
+        if not comp.is_supported:
+            print("{} is not currently supported".format(comp.name))
+            continue
+        futures.append(build_image(comp))
+    run_multiple_futures(futures)
 
 
 def cmd_push(components, registry_url, project_name):
     components = normalize_components(components)
-
     futures = []
-
-    def push_image(image_name):
-
-        stdout = mkprint(label=image_name)
-        stderr = mkprint(label=image_name, file=sys.stderr)
-
-        full_image_name = '{}/{}/{}:latest'.format(registry_url, project_name,
-                                                   image_name)
-
-        async def tag_and_push():
-            await stream_subprocess(
-                ['docker', 'tag', image_name, full_image_name], stdout, stderr)
-            await stream_subprocess(['docker', 'push', full_image_name],
-                                    stdout, stderr)
-
-        futures.append(tag_and_push())
-
-    if 'example1' in components:
-        push_image('example1')
-    if 'example2' in components:
-        push_image('example2')
-
+    for comp in components:
+        if not comp.is_supported:
+            print("{} is not currently supported".format(comp.name))
+            continue
+        futures.append(tag_and_push_image(comp, registry_url,
+                                          project_name))
     run_multiple_futures(futures)
 
 
 def cmd_build_and_push(components, registry_url, project_name):
     components = normalize_components(components)
-
     futures = []
-
-    def build_and_push_image(image_name, dockerfile, folder=None):
-
-        stdout = mkprint(label=image_name)
-        stderr = mkprint(label=image_name, file=sys.stderr)
-
-        full_image_name = '{}/{}/{}:latest'.format(registry_url, project_name,
-                                                   image_name)
-
-        async def build_and_tag_and_push():
-            await stream_subprocess(
-                ['docker', 'build', '-t', image_name, '-f', dockerfile,
-                 folder],
-                stdout, stderr)
-            await stream_subprocess(
-                ['docker', 'tag', image_name, full_image_name], stdout, stderr)
-            await stream_subprocess(['docker', 'push', full_image_name],
-                                    stdout, stderr)
-
-        futures.append(build_and_tag_and_push())
-
-    if 'example1' in components:
-        build_and_push_image('example1', 'example1/Dockerfile',
-                             'example1')
-    if 'example2' in components:
-        build_and_push_image('example2', 'example2/Dockerfile',
-                             'example2')
-
+    for comp in components:
+        if not comp.is_supported:
+            print("{} is not currently supported".format(comp.name))
+            continue
+        futures.append(build_and_tag_and_push_image(comp, registry_url,
+                                                    project_name))
     run_multiple_futures(futures)
 
 
@@ -245,19 +195,67 @@ def cmd_test():
         stderr_cb=stderr)
 
 
-# TODO: Component and ComponentGroup classes
+class Component:
+    def __init__(self, name, image_name, dockerfile, context_folder,
+                 aliases=None):
+        self.name = name
+        self.image_name = image_name
+        self.dockerfile = dockerfile
+        self.context_folder = context_folder
+        if aliases is None:
+            aliases = []
+        self.aliases = list(aliases)
+        self.is_supported = True
 
-component_choices = (
-    'example1',
-    'example2',
+    def __repr__(self):
+        return 'Component(\'{}\')'.format(self.name)
 
-    'all'
-)
+    def get_components(self):
+        return [self]
 
-unique_component_choices = (
-    'example1',
-    'example2',
-)
+
+class ComponentGroup:
+    def __init__(self, name, includes, aliases=None):
+        self.name = name
+        self.includes = list(includes)
+        if aliases is None:
+            aliases = []
+        self.aliases = list(aliases)
+
+    def __repr__(self):
+        return 'ComponentGroup(\'{}\')'.format(self.name)
+
+    def get_components(self):
+        return [comp
+                for item in self.includes
+                for comp in item.get_components()]
+
+
+def gen_components():
+    comp_example1 = Component('example1', 'example1', 'example1/Dockerfile',
+                              'example1')
+    comp_example2 = Component('example2', 'example2', 'example2/Dockerfile',
+                              'example2')
+
+    compg_all = ComponentGroup('all', [comp_example1, comp_example2])
+
+    component_items = {
+        comp_example1,
+        comp_example2,
+        compg_all,
+    }
+
+    items_by_name = {}
+    for c in component_items:
+        items_by_name[c.name] = c
+        for a in c.aliases:
+            items_by_name[a] = c
+
+    return items_by_name
+
+
+component_items_by_name = gen_components()
+component_choices = sorted(component_items_by_name.keys())
 
 
 def mkprint(label=None, file=None):
@@ -333,12 +331,65 @@ def run_multiple_futures(futures):
     return rc
 
 
-def normalize_components(components):
-    components = set(components)
-    if 'all' in components:
-        components = set(unique_component_choices)
-    components.discard('all')
-    return components
+def compose_image_operation_command(comp, registry_url=None, project_name=None,
+                                    build=False, push=False):
+    stdout = mkprint(label=comp.image_name)
+    stderr = mkprint(label=comp.image_name, file=sys.stderr)
+    full_image_name = '{}/{}/{}:latest'.format(registry_url, project_name,
+                                               comp.image_name)
+    if build and push:
+        async def _build_and_tag_and_push():
+            await stream_subprocess(
+                ['docker', 'build', '-t', comp.image_name, '-f',
+                 comp.dockerfile, comp.context_folder],
+                stdout, stderr)
+            await stream_subprocess(
+                ['docker', 'tag', comp.image_name, full_image_name],
+                stdout, stderr)
+            await stream_subprocess(['docker', 'push', full_image_name],
+                                    stdout, stderr)
+
+        return _build_and_tag_and_push()
+    elif build:
+        async def _build():
+            await stream_subprocess(
+                ['docker', 'build', '-t', comp.image_name, '-f',
+                 comp.dockerfile, comp.context_folder],
+                stdout, stderr)
+
+        return _build()
+    elif push:
+        async def _tag_and_push():
+            await stream_subprocess(
+                ['docker', 'tag', comp.image_name, full_image_name],
+                stdout, stderr)
+            await stream_subprocess(['docker', 'push', full_image_name],
+                                    stdout, stderr)
+
+        return _tag_and_push()
+    else:
+        raise Exception('Invalid operation, neither build nor push')
+
+
+def build_image(comp):
+    return compose_image_operation_command(comp, build=True, push=False)
+
+
+def tag_and_push_image(comp, registry_url, project_name):
+    return compose_image_operation_command(
+        comp, registry_url=registry_url, project_name=project_name,
+        build=False, push=True)
+
+
+def build_and_tag_and_push_image(comp, registry_url, project_name):
+    return compose_image_operation_command(
+        comp, registry_url=registry_url, project_name=project_name,
+        build=True, push=True)
+
+
+def normalize_components(component_names):
+    items = {component_items_by_name[name] for name in component_names}
+    return list(chain(*(item.get_components() for item in items)))
 
 
 if __name__ == '__main__':
