@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+
+"""
+Build container images of the various components and push them to a registry.
+"""
+
 from itertools import chain
 
 import os
