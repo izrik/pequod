@@ -14,8 +14,6 @@ def run():
     PEQUOD_LOGIN_PASSWORD = os.getenv('PEQUOD_LOGIN_PASSWORD')
 
     parser = argparse.ArgumentParser()
-    # parser.add_argument('cmd', choices=(
-    #     'build', 'push', 'bp', 'test', 'flake', 'flake8', 'ci'))
 
     subs = parser.add_subparsers(dest='command', title='Available commands')
 
@@ -246,6 +244,8 @@ def cmd_test():
         stdout_cb=stdout,
         stderr_cb=stderr)
 
+
+# TODO: Component and ComponentGroup classes
 
 component_choices = (
     'example1',
