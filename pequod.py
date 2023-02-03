@@ -183,6 +183,16 @@ def cmd_login(openshift_url, registry_url, username, password):
     run_external_command(cmd_args, stdout_cb=stdout2, stderr_cb=stderr2)
 
 
+def cmd_flake():
+    stdout = mkprint("flake")
+    stderr = mkprint("flake", file=sys.stderr)
+
+    run_external_command(
+        ['flake8', 'example1', 'example2', 'pequod.py'],
+        stdout_cb=stdout,
+        stderr_cb=stderr)
+
+
 def cmd_diag():
     def get_timestamp():
         dts = datetime.datetime.utcnow()
@@ -288,6 +298,9 @@ def run():
     push_s.set_defaults(
         func=lambda _args: cmd_push(_args.components, _args.registry_url,
                                     _args.project_name))
+
+    flake_s = subs.add_parser('flake', help='Run flake8 on the source files.')
+    flake_s.set_defaults(func=lambda _args: cmd_flake())
 
     args = parser.parse_args()
 
