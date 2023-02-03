@@ -7,98 +7,115 @@ import argparse
 import datetime
 import asyncio
 
-component_choices = (
-    'example1',
-    'example2',
 
-    'all'
-)
+def run():
+    PEQUOD_REGISTRY_URL = os.getenv('PEQUOD_REGISTRY_URL')
+    PEQUOD_PROJECT_NAME = os.getenv('PEQUOD_PROJECT_NAME', 'localhost')
+    PEQUOD_OPENSHIFT_URL = os.getenv('PEQUOD_OPENSHIFT_URL')
+    PEQUOD_LOGIN_USERNAME = os.getenv('PEQUOD_LOGIN_USERNAME')
+    PEQUOD_LOGIN_PASSWORD = os.getenv('PEQUOD_LOGIN_PASSWORD')
 
-unique_component_choices = (
-    'example1',
-    'example2',
-)
+    parser = argparse.ArgumentParser()
+    # parser.add_argument('cmd', choices=(
+    #     'build', 'push', 'bp', 'test', 'flake', 'flake8', 'ci'))
 
+    subs = parser.add_subparsers(dest='command', title='Available commands')
 
-def mkprint(label=None, file=None):
-    if file is None:
-        file = sys.stdout
+    diag_s = subs.add_parser('diag')
+    diag_s.set_defaults(func=lambda _args: cmd_diag())
 
-    def _print(s, *args, **kwargs):
-        if isinstance(s, bytes):
-            s = s.decode('utf-8')
-        if label is not None:
-            s = '{}: {}'.format(label, s)
-        print(s, end='', file=file, *args, **kwargs)
+    def format_envvar(s):
+        if s is None:
+            return 'unset'
+        return '"{}"'.format(s)
 
-    return _print
+    login_s = subs.add_parser('login')
+    login_s.add_argument(
+        '--openshift-url',
+        default=PEQUOD_OPENSHIFT_URL,
+        help='The base url for the OpenShift instance that operates the '
+             'registry. Usually an HTTPS url. Defaults to the value of the '
+             'PEQUOD_OPENSHIFT_URL env var '
+             '(currently {}).'.format(format_envvar(PEQUOD_OPENSHIFT_URL)))
+    login_s.add_argument(
+        '--registry-url',
+        default=PEQUOD_REGISTRY_URL,
+        help='The base url for the registry to push to. Usually a FQDN. '
+             'Defaults to the value of the PEQUOD_REGISTRY_URL env var '
+             '(currently {}).'.format(format_envvar(PEQUOD_REGISTRY_URL)))
+    login_s.add_argument(
+        '--username',
+        help='The username to use for logging in. Defaults to the value of '
+             'the PEQUOD_LOGIN_USERNAME env var '
+             '(currently {}).'.format(format_envvar(PEQUOD_LOGIN_USERNAME)))
+    login_s.add_argument(
+        '--password',
+        help='The password to use for logging in. Defaults to the value of '
+             'the PEQUOD_LOGIN_PASSWORD env var '
+             '(currently {}).'.format(format_envvar(PEQUOD_LOGIN_PASSWORD)))
+    login_s.set_defaults(func=lambda _args: cmd_login(_args.openshift_url,
+                                                      _args.registry_url,
+                                                      _args.username,
+                                                      _args.password))
 
+    build_s = subs.add_parser('build',
+                              help='Build one or more component images.')
+    build_s.add_argument('components', choices=component_choices, nargs='*')
+    build_s.set_defaults(func=lambda _args: cmd_build(_args.components))
 
-async def read_stream(stream, cb):
-    while True:
-        line = await stream.readline()
-        if line:
-            cb(line)
-        else:
-            break
+    push_s = subs.add_parser(
+        'push', help='Push one or more component images to the registry.')
+    push_s.add_argument('components', choices=component_choices, nargs='*')
+    push_s.add_argument(
+        '--registry-url',
+        default=PEQUOD_REGISTRY_URL,
+        help='The base url for the registry to push to. Usually a FQDN. '
+             'Defaults to the value of the PEQUOD_REGISTRY_URL env var '
+             '(currently {}).'.format(format_envvar(PEQUOD_REGISTRY_URL)))
+    push_s.add_argument(
+        '--project-name',
+        default=PEQUOD_PROJECT_NAME,
+        help='The name of the project/repo to push to. defaults to the value '
+             'of the PEQUOD_PROJECT_NAME env var if provided, or else '
+             '"localhost" (currently {}).'.format(
+                format_envvar(PEQUOD_PROJECT_NAME)))
+    push_s.set_defaults(
+        func=lambda _args: cmd_push(_args.components, _args.registry_url,
+                                    _args.project_name))
 
+    bp_s = subs.add_parser(
+        'bp', help='Both build and push selected component images')
+    bp_s.add_argument('components', choices=component_choices, nargs='*')
+    bp_s.add_argument(
+        '--registry-url',
+        default=PEQUOD_REGISTRY_URL,
+        help='The base url for the registry to push to. Usually a FQDN. '
+             'Defaults to the value of the PEQUOD_REGISTRY_URL env var '
+             '(currently {}).'.format(format_envvar(PEQUOD_REGISTRY_URL)))
+    bp_s.add_argument(
+        '--project-name',
+        default=PEQUOD_PROJECT_NAME,
+        help='The name of the project/repo to push to. defaults to the value '
+             'of the PEQUOD_PROJECT_NAME env var if provided, or else '
+             '"localhost" (currently {}).'.format(
+                format_envvar(PEQUOD_PROJECT_NAME)))
+    bp_s.set_defaults(func=lambda _args: cmd_build_and_push(
+        _args.components, _args.registry_url, _args.project_name))
 
-async def stream_subprocess(cmd, stdout_cb, stderr_cb):
-    process = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE)
+    flake_s = subs.add_parser('flake', help='Run flake8 on the source files.')
+    flake_s.set_defaults(func=lambda _args: cmd_flake())
 
-    await asyncio.wait([
-        read_stream(process.stdout, stdout_cb),
-        read_stream(process.stderr, stderr_cb)
-    ])
-    return await process.wait()
+    test_s = subs.add_parser('test', help='Run the unit tests.')
+    test_s.set_defaults(func=lambda _args: cmd_test())
 
+    args = parser.parse_args()
 
-async def wait_multiple(targets):
-    await asyncio.wait(targets)
+    if 'func' in args:
+        args.func(args)
+    else:
+        parser.print_help()
 
-
-loop = asyncio.get_event_loop()
-
-
-def run_external_command(command_args, stdout_cb=None, stderr_cb=None):
-    # https://kevinmccarthy.org/2016/07/25/streaming-subprocess-stdin-and-
-    # stdout-with-asyncio-in-python/
-
-    rc = loop.run_until_complete(
-        stream_subprocess(command_args, stdout_cb, stderr_cb)
-    )
-    return rc
-
-
-def run_multiple_commands(commands, stdout_cb=None, stderr_cb=None):
-    rc = loop.run_until_complete(
-        asyncio.wait([
-            stream_subprocess(cmd, stdout_cb, stderr_cb) for cmd in commands]))
-    return rc
-
-
-def run_multiple_command_sets(command_sets):
-    rc = loop.run_until_complete(
-        asyncio.wait([
-            stream_subprocess(cmd, stdout_cb, stderr_cb)
-            for cmd, stdout_cb, stderr_cb in command_sets]))
-    return rc
-
-
-def run_multiple_futures(futures):
-    rc = loop.run_until_complete(asyncio.wait(futures))
-    return rc
-
-
-def normalize_components(components):
-    components = set(components)
-    if 'all' in components:
-        components = set(unique_component_choices)
-    components.discard('all')
-    return components
+    loop.close()
 
 
 def cmd_build(components):
@@ -266,114 +283,98 @@ def cmd_diag():
     loop.run_until_complete(aaa())
 
 
-def run():
-    PEQUOD_REGISTRY_URL = os.getenv('PEQUOD_REGISTRY_URL')
-    PEQUOD_PROJECT_NAME = os.getenv('PEQUOD_PROJECT_NAME', 'localhost')
-    PEQUOD_OPENSHIFT_URL = os.getenv('PEQUOD_OPENSHIFT_URL')
-    PEQUOD_LOGIN_USERNAME = os.getenv('PEQUOD_LOGIN_USERNAME')
-    PEQUOD_LOGIN_PASSWORD = os.getenv('PEQUOD_LOGIN_PASSWORD')
+component_choices = (
+    'example1',
+    'example2',
 
-    parser = argparse.ArgumentParser()
-    # parser.add_argument('cmd', choices=(
-    #     'build', 'push', 'bp', 'test', 'flake', 'flake8', 'ci'))
+    'all'
+)
 
-    subs = parser.add_subparsers(dest='command', title='Available commands')
+unique_component_choices = (
+    'example1',
+    'example2',
+)
 
-    diag_s = subs.add_parser('diag')
-    diag_s.set_defaults(func=lambda _args: cmd_diag())
 
-    def format_envvar(s):
-        if s is None:
-            return 'unset'
-        return '"{}"'.format(s)
+def mkprint(label=None, file=None):
+    if file is None:
+        file = sys.stdout
 
-    login_s = subs.add_parser('login')
-    login_s.add_argument(
-        '--openshift-url',
-        default=PEQUOD_OPENSHIFT_URL,
-        help='The base url for the OpenShift instance that operates the '
-             'registry. Usually an HTTPS url. Defaults to the value of the '
-             'PEQUOD_OPENSHIFT_URL env var '
-             '(currently {}).'.format(format_envvar(PEQUOD_OPENSHIFT_URL)))
-    login_s.add_argument(
-        '--registry-url',
-        default=PEQUOD_REGISTRY_URL,
-        help='The base url for the registry to push to. Usually a FQDN. '
-             'Defaults to the value of the PEQUOD_REGISTRY_URL env var '
-             '(currently {}).'.format(format_envvar(PEQUOD_REGISTRY_URL)))
-    login_s.add_argument(
-        '--username',
-        help='The username to use for logging in. Defaults to the value of '
-             'the PEQUOD_LOGIN_USERNAME env var '
-             '(currently {}).'.format(format_envvar(PEQUOD_LOGIN_USERNAME)))
-    login_s.add_argument(
-        '--password',
-        help='The password to use for logging in. Defaults to the value of '
-             'the PEQUOD_LOGIN_PASSWORD env var '
-             '(currently {}).'.format(format_envvar(PEQUOD_LOGIN_PASSWORD)))
-    login_s.set_defaults(func=lambda _args: cmd_login(_args.openshift_url,
-                                                      _args.registry_url,
-                                                      _args.username,
-                                                      _args.password))
+    def _print(s, *args, **kwargs):
+        if isinstance(s, bytes):
+            s = s.decode('utf-8')
+        if label is not None:
+            s = '{}: {}'.format(label, s)
+        print(s, end='', file=file, *args, **kwargs)
 
-    build_s = subs.add_parser('build',
-                              help='Build one or more component images.')
-    build_s.add_argument('components', choices=component_choices, nargs='*')
-    build_s.set_defaults(func=lambda _args: cmd_build(_args.components))
+    return _print
 
-    push_s = subs.add_parser(
-        'push', help='Push one or more component images to the registry.')
-    push_s.add_argument('components', choices=component_choices, nargs='*')
-    push_s.add_argument(
-        '--registry-url',
-        default=PEQUOD_REGISTRY_URL,
-        help='The base url for the registry to push to. Usually a FQDN. '
-             'Defaults to the value of the PEQUOD_REGISTRY_URL env var '
-             '(currently {}).'.format(format_envvar(PEQUOD_REGISTRY_URL)))
-    push_s.add_argument(
-        '--project-name',
-        default=PEQUOD_PROJECT_NAME,
-        help='The name of the project/repo to push to. defaults to the value '
-             'of the PEQUOD_PROJECT_NAME env var if provided, or else '
-             '"localhost" (currently {}).'.format(
-                format_envvar(PEQUOD_PROJECT_NAME)))
-    push_s.set_defaults(
-        func=lambda _args: cmd_push(_args.components, _args.registry_url,
-                                    _args.project_name))
 
-    bp_s = subs.add_parser(
-        'bp', help='Both build and push selected component images')
-    bp_s.add_argument('components', choices=component_choices, nargs='*')
-    bp_s.add_argument(
-        '--registry-url',
-        default=PEQUOD_REGISTRY_URL,
-        help='The base url for the registry to push to. Usually a FQDN. '
-             'Defaults to the value of the PEQUOD_REGISTRY_URL env var '
-             '(currently {}).'.format(format_envvar(PEQUOD_REGISTRY_URL)))
-    bp_s.add_argument(
-        '--project-name',
-        default=PEQUOD_PROJECT_NAME,
-        help='The name of the project/repo to push to. defaults to the value '
-             'of the PEQUOD_PROJECT_NAME env var if provided, or else '
-             '"localhost" (currently {}).'.format(
-                format_envvar(PEQUOD_PROJECT_NAME)))
-    bp_s.set_defaults(func=lambda _args: cmd_build_and_push(
-        _args.components, _args.registry_url, _args.project_name))
+async def read_stream(stream, cb):
+    while True:
+        line = await stream.readline()
+        if line:
+            cb(line)
+        else:
+            break
 
-    flake_s = subs.add_parser('flake', help='Run flake8 on the source files.')
-    flake_s.set_defaults(func=lambda _args: cmd_flake())
 
-    test_s = subs.add_parser('test', help='Run the unit tests.')
-    test_s.set_defaults(func=lambda _args: cmd_test())
+async def stream_subprocess(cmd, stdout_cb, stderr_cb):
+    process = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE)
 
-    args = parser.parse_args()
+    await asyncio.wait([
+        read_stream(process.stdout, stdout_cb),
+        read_stream(process.stderr, stderr_cb)
+    ])
+    return await process.wait()
 
-    if 'func' in args:
-        args.func(args)
-    else:
-        parser.print_help()
 
-    loop.close()
+async def wait_multiple(targets):
+    await asyncio.wait(targets)
+
+
+loop = asyncio.get_event_loop()
+
+
+def run_external_command(command_args, stdout_cb=None, stderr_cb=None):
+    # https://kevinmccarthy.org/2016/07/25/streaming-subprocess-stdin-and-
+    # stdout-with-asyncio-in-python/
+
+    rc = loop.run_until_complete(
+        stream_subprocess(command_args, stdout_cb, stderr_cb)
+    )
+    return rc
+
+
+def run_multiple_commands(commands, stdout_cb=None, stderr_cb=None):
+    rc = loop.run_until_complete(
+        asyncio.wait([
+            stream_subprocess(cmd, stdout_cb, stderr_cb) for cmd in commands]))
+    return rc
+
+
+def run_multiple_command_sets(command_sets):
+    rc = loop.run_until_complete(
+        asyncio.wait([
+            stream_subprocess(cmd, stdout_cb, stderr_cb)
+            for cmd, stdout_cb, stderr_cb in command_sets]))
+    return rc
+
+
+def run_multiple_futures(futures):
+    rc = loop.run_until_complete(asyncio.wait(futures))
+    return rc
+
+
+def normalize_components(components):
+    components = set(components)
+    if 'all' in components:
+        components = set(unique_component_choices)
+    components.discard('all')
+    return components
 
 
 if __name__ == '__main__':
