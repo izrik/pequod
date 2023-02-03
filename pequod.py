@@ -137,7 +137,8 @@ def run():
     args = parser.parse_args()
 
     if 'func' in args:
-        args.func(args)
+        kwargs = vars(args)
+        args.func(**kwargs)
         if PEQUOD_POST_COMMAND and 'on_post' in args and args.on_post:
             cmd = PEQUOD_POST_COMMAND.split() + args.on_post.split()
             run_external_command(cmd, print, print)
@@ -147,7 +148,7 @@ def run():
     loop.close()
 
 
-def cmd_build(components):
+def cmd_build(components, **kwargs):
     components = normalize_components(components)
     futures = []
     for comp in components:
@@ -158,7 +159,7 @@ def cmd_build(components):
     run_multiple_futures(futures)
 
 
-def cmd_push(components, registry_url, project_name, image_tag):
+def cmd_push(components, registry_url, project_name, image_tag, **kwargs):
     components = normalize_components(components)
     futures = []
     for comp in components:
@@ -170,7 +171,8 @@ def cmd_push(components, registry_url, project_name, image_tag):
     run_multiple_futures(futures)
 
 
-def cmd_build_and_push(components, registry_url, project_name, image_tag):
+def cmd_build_and_push(components, registry_url, project_name, image_tag,
+                       **kwargs):
     components = normalize_components(components)
     futures = []
     for comp in components:
@@ -183,7 +185,7 @@ def cmd_build_and_push(components, registry_url, project_name, image_tag):
 
 
 def cmd_login(openshift_url, registry_url, username, password,
-              password_stdin):
+              password_stdin, **kwargs):
     if not password and password_stdin:
         password = sys.stdin.read().splitlines()[0]
 
@@ -212,7 +214,7 @@ def cmd_login(openshift_url, registry_url, username, password,
     run_external_command(cmd_args, stdout_cb=stdout2, stderr_cb=stderr2)
 
 
-def cmd_flake():
+def cmd_flake(**kwargs):
     stdout = mkprint("flake")
     stderr = mkprint("flake", file=sys.stderr)
 
@@ -222,7 +224,7 @@ def cmd_flake():
         stderr_cb=stderr)
 
 
-def cmd_test():
+def cmd_test(**kwargs):
     stdout = mkprint("test")
     stderr = mkprint("test", file=sys.stderr)
 
