@@ -157,6 +157,32 @@ def cmd_build_and_push(components):
     pass
 
 
+def cmd_login(openshift_url, registry_url, username, password):
+    stdout = mkprint("oc login")
+    stderr = mkprint("oc login", file=sys.stderr)
+
+    cmd_args = [
+        'oc', 'login', openshift_url, '--username={}'.format(username),
+        '--password={}'.format(password)
+    ]
+    run_external_command(cmd_args, stdout_cb=stdout, stderr_cb=stderr)
+
+    token = [None]
+
+    def capture(line):
+        token[0] = line.strip()
+
+    run_external_command(['oc', 'whoami', '-t'],
+                         stdout_cb=capture,
+                         stderr_cb=lambda x: None)
+
+    stdout2 = mkprint("docker login")
+    stderr2 = mkprint("docker login", file=sys.stderr)
+    cmd_args = ['docker', 'login', '-p', token[0], '-u', 'unused',
+                registry_url]
+    run_external_command(cmd_args, stdout_cb=stdout2, stderr_cb=stderr2)
+
+
 def cmd_diag():
     def get_timestamp():
         dts = datetime.datetime.utcnow()
@@ -191,6 +217,9 @@ def cmd_diag():
 def run():
     PEQUOD_REGISTRY_URL = os.getenv('PEQUOD_REGISTRY_URL')
     PEQUOD_PROJECT_NAME = os.getenv('PEQUOD_PROJECT_NAME', 'localhost')
+    PEQUOD_OPENSHIFT_URL = os.getenv('PEQUOD_OPENSHIFT_URL')
+    PEQUOD_LOGIN_USERNAME = os.getenv('PEQUOD_LOGIN_USERNAME')
+    PEQUOD_LOGIN_PASSWORD = os.getenv('PEQUOD_LOGIN_PASSWORD')
 
     parser = argparse.ArgumentParser()
     # parser.add_argument('cmd', choices=(
@@ -200,6 +229,40 @@ def run():
 
     diag_s = subs.add_parser('diag')
     diag_s.set_defaults(func=lambda _args: cmd_diag())
+
+    def format_envvar(s):
+        if s is None:
+            return 'unset'
+        return '"{}"'.format(s)
+
+    login_s = subs.add_parser('login')
+    login_s.add_argument(
+        '--openshift-url',
+        default=PEQUOD_OPENSHIFT_URL,
+        help='The base url for the OpenShift instance that operates the '
+             'registry. Usually an HTTPS url. Defaults to the value of the '
+             'PEQUOD_OPENSHIFT_URL env var '
+             '(currently {}).'.format(format_envvar(PEQUOD_OPENSHIFT_URL)))
+    login_s.add_argument(
+        '--registry-url',
+        default=PEQUOD_REGISTRY_URL,
+        help='The base url for the registry to push to. Usually a FQDN. '
+             'Defaults to the value of the PEQUOD_REGISTRY_URL env var '
+             '(currently {}).'.format(format_envvar(PEQUOD_REGISTRY_URL)))
+    login_s.add_argument(
+        '--username',
+        help='The username to use for logging in. Defaults to the value of '
+             'the PEQUOD_LOGIN_USERNAME env var '
+             '(currently {}).'.format(format_envvar(PEQUOD_LOGIN_USERNAME)))
+    login_s.add_argument(
+        '--password',
+        help='The password to use for logging in. Defaults to the value of '
+             'the PEQUOD_LOGIN_PASSWORD env var '
+             '(currently {}).'.format(format_envvar(PEQUOD_LOGIN_PASSWORD)))
+    login_s.set_defaults(func=lambda _args: cmd_login(_args.openshift_url,
+                                                      _args.registry_url,
+                                                      _args.username,
+                                                      _args.password))
 
     build_s = subs.add_parser('build',
                               help='Build one or more component images.')
@@ -214,13 +277,14 @@ def run():
         default=PEQUOD_REGISTRY_URL,
         help='The base url for the registry to push to. Usually a FQDN. '
              'Defaults to the value of the PEQUOD_REGISTRY_URL env var '
-             '(currently "{}").'.format(PEQUOD_REGISTRY_URL))
+             '(currently {}).'.format(format_envvar(PEQUOD_REGISTRY_URL)))
     push_s.add_argument(
         '--project-name',
         default=PEQUOD_PROJECT_NAME,
         help='The name of the project/repo to push to. defaults to the value '
              'of the PEQUOD_PROJECT_NAME env var if provided, or else '
-             '"localhost" (currently "{}").'.format(PEQUOD_PROJECT_NAME))
+             '"localhost" (currently {}).'.format(
+                format_envvar(PEQUOD_PROJECT_NAME)))
     push_s.set_defaults(
         func=lambda _args: cmd_push(_args.components, _args.registry_url,
                                     _args.project_name))
