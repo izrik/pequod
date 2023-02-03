@@ -311,21 +311,6 @@ def run_external_command(command_args, stdout_cb=None, stderr_cb=None):
     return rc
 
 
-def run_multiple_commands(commands, stdout_cb=None, stderr_cb=None):
-    rc = loop.run_until_complete(
-        asyncio.wait([
-            stream_subprocess(cmd, stdout_cb, stderr_cb) for cmd in commands]))
-    return rc
-
-
-def run_multiple_command_sets(command_sets):
-    rc = loop.run_until_complete(
-        asyncio.wait([
-            stream_subprocess(cmd, stdout_cb, stderr_cb)
-            for cmd, stdout_cb, stderr_cb in command_sets]))
-    return rc
-
-
 def run_multiple_futures(futures):
     rc = loop.run_until_complete(asyncio.wait(futures))
     return rc
