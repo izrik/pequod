@@ -50,10 +50,15 @@ def run():
         help='The password to use for logging in. Defaults to the value of '
              'the PEQUOD_LOGIN_PASSWORD env var '
              '(currently {}).'.format(format_envvar(PEQUOD_LOGIN_PASSWORD)))
+    login_s.add_argument(
+        '--password-stdin', action='store_true',
+        help='Take the password to use for logging in from STDIN.')
+
     login_s.set_defaults(func=lambda _args: cmd_login(_args.openshift_url,
                                                       _args.registry_url,
                                                       _args.username,
-                                                      _args.password),
+                                                      _args.password,
+                                                      _args.password_stdin),
                          on_post='login complete')
 
     build_s = subs.add_parser('build',
@@ -161,7 +166,12 @@ def cmd_build_and_push(components, registry_url, project_name):
     run_multiple_futures(futures)
 
 
-def cmd_login(openshift_url, registry_url, username, password):
+def cmd_login(openshift_url, registry_url, username, password,
+              password_stdin):
+
+    if not password and password_stdin:
+        password = sys.stdin.read().splitlines()[0]
+
     stdout = mkprint("oc login")
     stderr = mkprint("oc login", file=sys.stderr)
 
