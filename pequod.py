@@ -193,6 +193,17 @@ def cmd_flake():
         stderr_cb=stderr)
 
 
+def cmd_test():
+    stdout = mkprint("test")
+    stderr = mkprint("test", file=sys.stderr)
+
+    run_external_command(
+        ['python', '-m', 'pytest', '--cov=example1', '--cov=example2',
+         '--cov=pequod', '--cov-branch', '--cov-report', 'html', 'tests/'],
+        stdout_cb=stdout,
+        stderr_cb=stderr)
+
+
 def cmd_diag():
     def get_timestamp():
         dts = datetime.datetime.utcnow()
@@ -301,6 +312,9 @@ def run():
 
     flake_s = subs.add_parser('flake', help='Run flake8 on the source files.')
     flake_s.set_defaults(func=lambda _args: cmd_flake())
+
+    test_s = subs.add_parser('test', help='Run the unit tests.')
+    test_s.set_defaults(func=lambda _args: cmd_test())
 
     args = parser.parse_args()
 
