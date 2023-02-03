@@ -83,9 +83,14 @@ def run():
              'of the PEQUOD_PROJECT_NAME env var if provided, or else '
              '"localhost" (currently {}).'.format(
             format_envvar(PEQUOD_PROJECT_NAME)))
+    push_s.add_argument(
+        '--image-tag',
+        default='latest',
+        help='The tag for the docker image, e.g. "1.0" or "2.3.4-rev5-alpha" '
+             'or "stable". Defaults to "latest".')
     push_s.set_defaults(
         func=lambda _args: cmd_push(_args.components, _args.registry_url,
-                                    _args.project_name),
+                                    _args.project_name, _args.image_tag),
         on_post='push complete')
 
     bp_s = subs.add_parser(
@@ -104,8 +109,14 @@ def run():
              'of the PEQUOD_PROJECT_NAME env var if provided, or else '
              '"localhost" (currently {}).'.format(
             format_envvar(PEQUOD_PROJECT_NAME)))
+    bp_s.add_argument(
+        '--image-tag',
+        default='latest',
+        help='The tag for the docker image, e.g. "1.0" or "2.3.4-rev5-alpha" '
+             'or "stable". Defaults to "latest".')
     bp_s.set_defaults(func=lambda _args: cmd_build_and_push(
-        _args.components, _args.registry_url, _args.project_name),
+        _args.components, _args.registry_url, _args.project_name,
+        _args.image_tag),
                       on_post='build and push complete')
 
     flake_s = subs.add_parser('flake', help='Run flake8 on the source files.')
@@ -142,7 +153,7 @@ def cmd_build(components):
     run_multiple_futures(futures)
 
 
-def cmd_push(components, registry_url, project_name):
+def cmd_push(components, registry_url, project_name, image_tag):
     components = normalize_components(components)
     futures = []
     for comp in components:
@@ -150,11 +161,11 @@ def cmd_push(components, registry_url, project_name):
             print("{} is not currently supported".format(comp.name))
             continue
         futures.append(tag_and_push_image(comp, registry_url,
-                                          project_name))
+                                          project_name, image_tag))
     run_multiple_futures(futures)
 
 
-def cmd_build_and_push(components, registry_url, project_name):
+def cmd_build_and_push(components, registry_url, project_name, image_tag):
     components = normalize_components(components)
     futures = []
     for comp in components:
@@ -162,13 +173,12 @@ def cmd_build_and_push(components, registry_url, project_name):
             print("{} is not currently supported".format(comp.name))
             continue
         futures.append(build_and_tag_and_push_image(comp, registry_url,
-                                                    project_name))
+                                                    project_name, image_tag))
     run_multiple_futures(futures)
 
 
 def cmd_login(openshift_url, registry_url, username, password,
               password_stdin):
-
     if not password and password_stdin:
         password = sys.stdin.read().splitlines()[0]
 
@@ -340,11 +350,13 @@ def run_multiple_futures(futures):
 
 
 def compose_image_operation_command(comp, registry_url=None, project_name=None,
-                                    build=False, push=False):
+                                    build=False, push=False, image_tag=None):
     stdout = mkprint(label=comp.image_name)
     stderr = mkprint(label=comp.image_name, file=sys.stderr)
-    full_image_name = '{}/{}/{}:latest'.format(registry_url, project_name,
-                                               comp.image_name)
+    if image_tag is None:
+        image_tag = 'latest'
+    full_image_name = '{}/{}/{}:{}'.format(registry_url, project_name,
+                                           comp.image_name, image_tag)
     if build and push:
         async def _build_and_tag_and_push():
             await stream_subprocess(
@@ -383,16 +395,16 @@ def build_image(comp):
     return compose_image_operation_command(comp, build=True, push=False)
 
 
-def tag_and_push_image(comp, registry_url, project_name):
+def tag_and_push_image(comp, registry_url, project_name, image_tag):
     return compose_image_operation_command(
         comp, registry_url=registry_url, project_name=project_name,
-        build=False, push=True)
+        build=False, push=True, image_tag=image_tag)
 
 
-def build_and_tag_and_push_image(comp, registry_url, project_name):
+def build_and_tag_and_push_image(comp, registry_url, project_name, image_tag):
     return compose_image_operation_command(
         comp, registry_url=registry_url, project_name=project_name,
-        build=True, push=True)
+        build=True, push=True, image_tag=image_tag)
 
 
 def normalize_components(component_names):
