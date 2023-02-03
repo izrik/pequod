@@ -98,9 +98,11 @@ def run():
         _args.components, _args.registry_url, _args.project_name))
 
     flake_s = subs.add_parser('flake', help='Run flake8 on the source files.')
+    # TODO: specify components
     flake_s.set_defaults(func=lambda _args: cmd_flake())
 
     test_s = subs.add_parser('test', help='Run the unit tests.')
+    # TODO: specify components
     test_s.set_defaults(func=lambda _args: cmd_test())
 
     args = parser.parse_args()
