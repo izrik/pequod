@@ -48,40 +48,40 @@ def run():
             return 'unset'
         return '"{}"'.format(s)
 
-    login_s = subs.add_parser('login')
-    login_s.add_argument(
-        '--openshift-url',
-        default=PEQUOD_OPENSHIFT_URL,
-        help='The base url for the OpenShift instance that operates the '
-             'registry. Usually an HTTPS url. Defaults to the value of the '
-             'PEQUOD_OPENSHIFT_URL env var '
-             '(currently {}).'.format(format_envvar(PEQUOD_OPENSHIFT_URL)))
-    login_s.add_argument(
-        '--registry-url',
-        default=PEQUOD_REGISTRY_URL,
-        help='The base url for the registry to push to. Usually a FQDN. '
-             'Defaults to the value of the PEQUOD_REGISTRY_URL env var '
-             '(currently {}).'.format(format_envvar(PEQUOD_REGISTRY_URL)))
-    login_s.add_argument(
-        '--username',
-        help='The username to use for logging in. Defaults to the value of '
-             'the PEQUOD_LOGIN_USERNAME env var '
-             '(currently {}).'.format(format_envvar(PEQUOD_LOGIN_USERNAME)))
-    login_s.add_argument(
-        '--password',
-        help='The password to use for logging in. Defaults to the value of '
-             'the PEQUOD_LOGIN_PASSWORD env var '
-             '(currently {}).'.format(format_envvar(PEQUOD_LOGIN_PASSWORD)))
-    login_s.add_argument(
-        '--password-stdin', action='store_true',
-        help='Take the password to use for logging in from STDIN.')
-
-    login_s.set_defaults(func=lambda _args: cmd_login(_args.openshift_url,
-                                                      _args.registry_url,
-                                                      _args.username,
-                                                      _args.password,
-                                                      _args.password_stdin),
-                         on_post='login complete')
+    # login_s = subs.add_parser('login')
+    # login_s.add_argument(
+    #     '--openshift-url',
+    #     default=PEQUOD_OPENSHIFT_URL,
+    #     help='The base url for the OpenShift instance that operates the '
+    #          'registry. Usually an HTTPS url. Defaults to the value of the '
+    #          'PEQUOD_OPENSHIFT_URL env var '
+    #          '(currently {}).'.format(format_envvar(PEQUOD_OPENSHIFT_URL)))
+    # login_s.add_argument(
+    #     '--registry-url',
+    #     default=PEQUOD_REGISTRY_URL,
+    #     help='The base url for the registry to push to. Usually a FQDN. '
+    #          'Defaults to the value of the PEQUOD_REGISTRY_URL env var '
+    #          '(currently {}).'.format(format_envvar(PEQUOD_REGISTRY_URL)))
+    # login_s.add_argument(
+    #     '--username',
+    #     help='The username to use for logging in. Defaults to the value of '
+    #          'the PEQUOD_LOGIN_USERNAME env var '
+    #          '(currently {}).'.format(format_envvar(PEQUOD_LOGIN_USERNAME)))
+    # login_s.add_argument(
+    #     '--password',
+    #     help='The password to use for logging in. Defaults to the value of '
+    #          'the PEQUOD_LOGIN_PASSWORD env var '
+    #          '(currently {}).'.format(format_envvar(PEQUOD_LOGIN_PASSWORD)))
+    # login_s.add_argument(
+    #     '--password-stdin', action='store_true',
+    #     help='Take the password to use for logging in from STDIN.')
+    #
+    # login_s.set_defaults(func=lambda _args: cmd_login(_args.openshift_url,
+    #                                                   _args.registry_url,
+    #                                                   _args.username,
+    #                                                   _args.password,
+    #                                                   _args.password_stdin),
+    #                      on_post='login complete')
 
     build_s = subs.add_parser('build',
                               help='Build one or more component images.')
