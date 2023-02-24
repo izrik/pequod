@@ -157,6 +157,11 @@ def run():
     test_s.set_defaults(func=lambda _args: cmd_test(),
                         on_post='unit tests complete')
 
+    info_s = subs.add_parser(
+        'info',
+        help='Display info about the configured components.')
+    info_s.set_defaults(func=cmd_info)
+
     args = parser.parse_args()
 
     if 'func' in args:
@@ -256,6 +261,30 @@ def cmd_test(**kwargs):
          '--cov=pequod', '--cov-branch', '--cov-report', 'html', 'tests/'],
         stdout_cb=stdout,
         stderr_cb=stderr)
+
+
+def cmd_info(*args, **kwargs):
+    components = set(_ for _ in component_items_by_name.values()
+                     if isinstance(_, Component))
+    components = list(sorted(components, key=lambda _: _.name))
+    groups = set(_ for _ in component_items_by_name.values()
+                 if isinstance(_, ComponentGroup))
+    groups = list(sorted(groups, key=lambda _: _.name))
+    if not components:
+        print('No configured components')
+    else:
+        print('Components:')
+        for c in components:
+            print(f'  {c.name}')
+            # TODO: print info like type, aliases, depends_on
+    print('')
+    if not groups:
+        print('No groups')
+    else:
+        print('Groups:')
+        for g in groups:
+            print(f'  {g.name}')
+            # TODO: print group contents, aliases
 
 
 class Component:
