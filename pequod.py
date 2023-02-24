@@ -304,30 +304,61 @@ class ComponentGroup:
                 for comp in item.get_components()]
 
 
-def gen_components():
-    comp_example1 = Component('example1', 'example1', 'example1/Dockerfile',
-                              'example1')
-    comp_example2 = Component('example2', 'example2', 'example2/Dockerfile',
-                              'example2')
-
-    compg_all = ComponentGroup('all', [comp_example1, comp_example2])
-
-    component_items = {
-        comp_example1,
-        comp_example2,
-        compg_all,
-    }
+def load_components(conf_file=None):
+    if conf_file is None:
+        conf_file = 'pequod.yaml'
+    import yaml
+    with open(conf_file) as f:
+        contents = yaml.load(f, Loader=yaml.Loader)
+    if 'components' not in contents:
+        raise Exception("No components defined")
+    # TODO: depends_on
+    components = []
+    components_by_type = {}
+    for c in contents['components']:
+        # TODO: check arguments
+        # TODO: link strings to Component objects
+        cc = Component(**c)
+        components.append(cc)
+        if cc.comp_type:
+            if cc.comp_type not in components_by_type:
+                components_by_type[cc.comp_type] = []
+            components_by_type[cc.comp_type].append(cc)
+    groups = []
+    groups_by_name = {}
+    if 'groups' in contents:
+        for g in contents['groups']:
+            # TODO: check arguments
+            # TODO: link strings to Component and ComponentGroup objects
+            gg = ComponentGroup(**g)
+            groups_by_name[gg.name] = gg
+            groups.append(gg)
+    if 'all' not in groups_by_name:
+        all_group = ComponentGroup('all', components)
+        groups_by_name['all'] = all_group
+        groups.append(all_group)
+    for comp_type, comps in components_by_type.items():
+        if comp_type not in groups_by_name:
+            g = ComponentGroup(name=comp_type, includes=comps)
+            groups.append(g)
+            groups_by_name[comp_type] = g
 
     items_by_name = {}
-    for c in component_items:
+    for c in components:
+        # TODO: don't overwrite duplicate keys?
         items_by_name[c.name] = c
         for a in c.aliases:
             items_by_name[a] = c
+    for g in groups:
+        # TODO: don't overwrite duplicate keys?
+        items_by_name[g.name] = g
+        for a in g.aliases:
+            items_by_name[a] = g
 
     return items_by_name
 
 
-component_items_by_name = gen_components()
+component_items_by_name = load_components()
 component_choices = sorted(component_items_by_name.keys())
 
 
