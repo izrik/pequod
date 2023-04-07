@@ -94,10 +94,11 @@ def run(config):
     push_s.add_argument('components', choices=component_choices, nargs='*')
     push_s.add_argument(
         '--registry-url',
-        default=PEQUOD_REGISTRY_URL,
+        default=config['registry_url'],
         help='The base url for the registry to push to. Usually a FQDN. '
-             'Defaults to the value of the PEQUOD_REGISTRY_URL env var '
-             '(currently {}).'.format(format_envvar(PEQUOD_REGISTRY_URL)))
+             'Defaults to the value of the `registry_url` key in the config, '
+             'or the PEQUOD_REGISTRY_URL env var '
+             '(currently {}).'.format(format_envvar(config['registry_url'])))
     push_s.add_argument(
         '--image-tag',
         default=DEFAULT_IMAGE_TAG,
