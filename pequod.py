@@ -32,8 +32,6 @@ DEFAULT_IMAGE_TAG = get_image_tag_from_git_commit()
 
 def run(config):
     PEQUOD_REGISTRY_URL = os.getenv('PEQUOD_REGISTRY_URL')
-    PEQUOD_PROJECT_NAME = os.getenv('PEQUOD_PROJECT_NAME', 'localhost')
-    PEQUOD_OPENSHIFT_URL = os.getenv('PEQUOD_OPENSHIFT_URL')
     PEQUOD_LOGIN_USERNAME = os.getenv('PEQUOD_LOGIN_USERNAME')
     PEQUOD_LOGIN_PASSWORD = os.getenv('PEQUOD_LOGIN_PASSWORD')
 
@@ -52,13 +50,6 @@ def run(config):
         return '"{}"'.format(s)
 
     # login_s = subs.add_parser('login')
-    # login_s.add_argument(
-    #     '--openshift-url',
-    #     default=PEQUOD_OPENSHIFT_URL,
-    #     help='The base url for the OpenShift instance that operates the '
-    #          'registry. Usually an HTTPS url. Defaults to the value of the '
-    #          'PEQUOD_OPENSHIFT_URL env var '
-    #          '(currently {}).'.format(format_envvar(PEQUOD_OPENSHIFT_URL)))
     # login_s.add_argument(
     #     '--registry-url',
     #     default=PEQUOD_REGISTRY_URL,
@@ -79,8 +70,7 @@ def run(config):
     #     '--password-stdin', action='store_true',
     #     help='Take the password to use for logging in from STDIN.')
     #
-    # login_s.set_defaults(func=lambda _args: cmd_login(_args.openshift_url,
-    #                                                   _args.registry_url,
+    # login_s.set_defaults(func=lambda _args: cmd_login(_args.registry_url,
     #                                                   _args.username,
     #                                                   _args.password,
     #                                                   _args.password_stdin),
@@ -109,13 +99,6 @@ def run(config):
              'Defaults to the value of the PEQUOD_REGISTRY_URL env var '
              '(currently {}).'.format(format_envvar(PEQUOD_REGISTRY_URL)))
     push_s.add_argument(
-        '--project-name',
-        default=PEQUOD_PROJECT_NAME,
-        help='The name of the project/repo to push to. defaults to the value '
-             'of the PEQUOD_PROJECT_NAME env var if provided, or else '
-             '"localhost" (currently {}).'.format(
-            format_envvar(PEQUOD_PROJECT_NAME)))
-    push_s.add_argument(
         '--image-tag',
         default=DEFAULT_IMAGE_TAG,
         help='The tag for the docker image, e.g. "1.0" or "2.3.4-rev5-alpha" '
@@ -134,13 +117,6 @@ def run(config):
         help='The base url for the registry to push to. Usually a FQDN. '
              'Defaults to the value of the PEQUOD_REGISTRY_URL env var '
              '(currently {}).'.format(format_envvar(PEQUOD_REGISTRY_URL)))
-    bp_s.add_argument(
-        '--project-name',
-        default=PEQUOD_PROJECT_NAME,
-        help='The name of the project/repo to push to. defaults to the value '
-             'of the PEQUOD_PROJECT_NAME env var if provided, or else '
-             '"localhost" (currently {}).'.format(
-            format_envvar(PEQUOD_PROJECT_NAME)))
     bp_s.add_argument(
         '--image-tag',
         default=DEFAULT_IMAGE_TAG,
@@ -190,20 +166,18 @@ def cmd_build(components, **kwargs):
     run_multiple_futures(futures)
 
 
-def cmd_push(components, registry_url, project_name, image_tag, **kwargs):
+def cmd_push(components, registry_url, image_tag, **kwargs):
     components = normalize_components(components)
     futures = []
     for comp in components:
         if not comp.is_supported:
             print("{} is not currently supported".format(comp.name))
             continue
-        futures.append(tag_and_push_image(comp, registry_url,
-                                          project_name, image_tag))
+        futures.append(tag_and_push_image(comp, registry_url, image_tag))
     run_multiple_futures(futures)
 
 
-def cmd_build_and_push(components, registry_url, project_name, image_tag,
-                       **kwargs):
+def cmd_build_and_push(components, registry_url, image_tag, **kwargs):
     components = normalize_components(components)
     futures = []
     for comp in components:
@@ -211,11 +185,11 @@ def cmd_build_and_push(components, registry_url, project_name, image_tag,
             print("{} is not currently supported".format(comp.name))
             continue
         futures.append(build_and_tag_and_push_image(comp, registry_url,
-                                                    project_name, image_tag))
+                                                    image_tag))
     run_multiple_futures(futures)
 
 
-def cmd_login(openshift_url, registry_url, username, password,
+def cmd_login(registry_url, username, password,
               password_stdin, **kwargs):
     if not password and password_stdin:
         password = sys.stdin.read().splitlines()[0]
@@ -224,7 +198,7 @@ def cmd_login(openshift_url, registry_url, username, password,
     stderr = mkprint("oc login", file=sys.stderr)
 
     cmd_args = [
-        'oc', 'login', openshift_url, '--username={}'.format(username),
+        'docker', 'login', 'url', '--username={}'.format(username),
         '--password={}'.format(password)
     ]
     run_external_command(cmd_args, stdout_cb=stdout, stderr_cb=stderr)
@@ -477,14 +451,14 @@ def run_multiple_futures(futures):
     return rc
 
 
-def compose_image_operation_command(comp, registry_url=None, project_name=None,
+def compose_image_operation_command(comp, registry_url=None,
                                     build=False, push=False, image_tag=None):
     stdout = mkprint(label=comp.image_name)
     stderr = mkprint(label=comp.image_name, file=sys.stderr)
     if image_tag is None:
         image_tag = DEFAULT_IMAGE_TAG
-    full_image_name = '{}/{}/{}:{}'.format(registry_url, project_name,
-                                           comp.image_name, image_tag)
+    full_image_name = '{}/{}:{}'.format(registry_url,
+                                        comp.image_name, image_tag)
     if build and push:
         async def _build_and_tag_and_push():
             await stream_subprocess(
@@ -523,15 +497,15 @@ def build_image(comp):
     return compose_image_operation_command(comp, build=True, push=False)
 
 
-def tag_and_push_image(comp, registry_url, project_name, image_tag):
+def tag_and_push_image(comp, registry_url, image_tag):
     return compose_image_operation_command(
-        comp, registry_url=registry_url, project_name=project_name,
+        comp, registry_url=registry_url,
         build=False, push=True, image_tag=image_tag)
 
 
-def build_and_tag_and_push_image(comp, registry_url, project_name, image_tag):
+def build_and_tag_and_push_image(comp, registry_url, image_tag):
     return compose_image_operation_command(
-        comp, registry_url=registry_url, project_name=project_name,
+        comp, registry_url=registry_url,
         build=True, push=True, image_tag=image_tag)
 
 
