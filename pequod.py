@@ -30,7 +30,7 @@ def get_image_tag_from_git_commit():
 DEFAULT_IMAGE_TAG = get_image_tag_from_git_commit()
 
 
-def run():
+def run(config):
     PEQUOD_REGISTRY_URL = os.getenv('PEQUOD_REGISTRY_URL')
     PEQUOD_PROJECT_NAME = os.getenv('PEQUOD_PROJECT_NAME', 'localhost')
     PEQUOD_OPENSHIFT_URL = os.getenv('PEQUOD_OPENSHIFT_URL')
@@ -333,18 +333,21 @@ class ComponentGroup:
                 for comp in item.get_components()]
 
 
-def load_components(conf_file=None):
+def load_config_file(conf_file=None):
     if conf_file is None:
         conf_file = 'pequod.yaml'
     import yaml
     with open(conf_file) as f:
-        contents = yaml.load(f, Loader=yaml.Loader)
-    if 'components' not in contents:
+        return yaml.load(f, Loader=yaml.Loader)
+
+
+def load_components(config):
+    if 'components' not in config:
         raise Exception("No components defined")
     # TODO: depends_on
     components = []
     components_by_type = {}
-    for c in contents['components']:
+    for c in config['components']:
         # TODO: check arguments
         # TODO: link strings to Component objects
         cc = Component(**c)
@@ -355,8 +358,8 @@ def load_components(conf_file=None):
             components_by_type[cc.comp_type].append(cc)
     groups = []
     groups_by_name = {}
-    if 'groups' in contents:
-        for g in contents['groups']:
+    if 'groups' in config:
+        for g in config['groups']:
             # TODO: check arguments
             # TODO: link strings to Component and ComponentGroup objects
             gg = ComponentGroup(**g)
@@ -387,7 +390,8 @@ def load_components(conf_file=None):
     return items_by_name
 
 
-component_items_by_name = load_components()
+config = load_config_file()
+component_items_by_name = load_components(config)
 component_choices = sorted(component_items_by_name.keys())
 
 
@@ -534,4 +538,4 @@ def normalize_components(component_names):
 
 
 if __name__ == '__main__':
-    run()
+    run(config)
