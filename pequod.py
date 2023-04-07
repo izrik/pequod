@@ -39,6 +39,9 @@ def run(config):
 
     PEQUOD_POST_COMMAND = os.getenv('PEQUOD_POST_COMMAND')
 
+    if 'registry_url' not in config or not config['registry_url']:
+        config['registry_url'] = PEQUOD_REGISTRY_URL
+
     parser = argparse.ArgumentParser()
 
     subs = parser.add_subparsers(dest='command', title='Available commands')
