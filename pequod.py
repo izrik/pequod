@@ -254,7 +254,11 @@ def cmd_info(*args, **kwargs):
         print('Components:')
         for c in components:
             print(f'  {c.name}')
-            # TODO: print info like type, aliases, depends_on
+            print(f'    type: {c.comp_type}')
+            if c.aliases:
+                print(f'    aliases: {", ".join(c.aliases)}')
+            if c.depends_on:
+                print(f'    depends on: {", ".join(c.depends_on)}')
     print('')
     if not groups:
         print('No groups')
